@@ -1,7 +1,7 @@
 1. Member names and IDs:
    a)Samuel Lopez (6285237)
    b)Alberto Popa (6398630)
-   c)Mariana ()
+   c)Mariana Cusgüen (6386092)
 
 3. Language used: Java
    
