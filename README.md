@@ -7,9 +7,8 @@
    
 4. SSL library used if any: java.net.HttpURLConnection and javax.net.ssl.HttpsURLConnection.
    
-5. Compiling instructions: To compile the program you need to open a terminal, then navigate to
-   the directory where the "Monitor.java" is saved, use the java compiler "Javac" to compile the "Monitor.java"
-   use the following command in the terminal "Javac Monitor.java" this will generate "Monitor.class" in the same directory,
-   To run the compiled Monitor class, you need a text file containing the list of URLs to monitor (urls-file.txt).
-   Then, execute the program using the java command followed by the class name and the file name as an
-   argument: "java Monitor urls-file.txt".
+5. Compiling instructions: In order to compile the program, you will need to first open a terminal and then navigate to the directory where the "Monitor.java" file is located. 
+Once you are in the correct directory, use the "Javac" java compiler to compile the "Monitor.java" file by typing "Javac Monitor.java" in the terminal. 
+This action will result in the creation of a new file called "Monitor.class" in the same directory. To execute the compiled Monitor class, you will also 
+need a text file that contains the list of URLs that you wish to monitor (named "urls-file.txt"). To complete the process, use the java command followed 
+by the class name and the text file name as an argument: "java Monitor urls-file.txt".
