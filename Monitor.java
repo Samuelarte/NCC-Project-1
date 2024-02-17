@@ -1,13 +1,12 @@
-import java.io.BufferedReader;
-import java.io.FileReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
-import java.net.Socket;
-import java.net.URL;
-import java.net.HttpURLConnection;
+import java.io.*;
+import java.net.*;
+import java.util.*;
+import java.util.regex.*;
 
 public class Monitor {
+
+    private static final int MAX_REDIRECTS = 5;
+
     public static void main(String[] args) {
         if (args.length != 1) {
             System.out.println("Usage: java Monitor <urls-file>");
@@ -15,105 +14,111 @@ public class Monitor {
         }
 
         String urlsFile = args[0];
+        Monitor monitor = new Monitor();
 
         try {
-            parseAndProcessURLs(urlsFile);
+            List<String> urls = monitor.readURLsFromFile(urlsFile);
+            monitor.processURLs(urls);
         } catch (IOException e) {
             System.out.println("Error reading file: " + e.getMessage());
         }
     }
 
-    private static void parseAndProcessURLs(String urlsFile) throws IOException {
+    private List<String> readURLsFromFile(String urlsFile) throws IOException {
+        List<String> urls = new ArrayList<>();
         try (BufferedReader reader = new BufferedReader(new FileReader(urlsFile))) {
-            String url;
-            while ((url = reader.readLine()) != null) {
-                processURL(url);
+            String line;
+            while ((line = reader.readLine()) != null) {
+                urls.add(line);
             }
+        }
+        return urls;
+    }
+
+    private void processURLs(List<String> urls) {
+        for (String url : urls) {
+            processURL(url, 0, true);
         }
     }
 
-    private static void processURL(String url) {
+    private void processURL(String url, int redirectCount, boolean isOriginalUrl) {
+        if (redirectCount > MAX_REDIRECTS) {
+            System.out.println("URL: " + url);
+            System.out.println("Exceeded max redirects for: " + url);
+            System.out.println();
+            return;
+        }
+
         try {
-            URL u = new URL(url);
-            String protocol = u.getProtocol();
-            String host = u.getHost();
-            int port = u.getPort() != -1 ? u.getPort() : (protocol.equalsIgnoreCase("https") ? 443 : 80);
-            String path = u.getPath();
-
-            Socket socket = new Socket(host, port);
-
-            PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
-            out.println("GET " + path + " HTTP/1.1\r\n" +
-                    "Host: " + host + "\r\n" +
-                    "Connection: close\r\n");
-
-            BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            String responseLine = in.readLine();
-
-            if (responseLine != null && responseLine.startsWith("HTTP/")) {
-                int statusCode = Integer.parseInt(responseLine.split(" ")[1]);
-
-                if (statusCode >= 200 && statusCode < 300) {
-                    System.out.println("URL: " + url + "\nStatus: " + statusCode + " OK");
-                    String line;
-                    while ((line = in.readLine()) != null) {
-                        if (line.contains("<img src=")) {
-                            String imageUrl = line.split("<img src=\"")[1].split("\"")[0];
-                            fetchAndPrintImageStatus(url, imageUrl);
-                        }
-                    }
-                } else if (statusCode >= 300 && statusCode < 400) {
-                    System.out.println("URL: " + url + "\nStatus: " + statusCode + " Moved Permanently");
-                    String redirectedURL = getRedirectedURL(in);
-                    if (redirectedURL != null) {
-                        System.out.println("Redirected URL: " + redirectedURL);
-                        processURL(redirectedURL);
-                    }
-                } else if (statusCode >= 400 && statusCode < 500) {
-                    System.out.println("URL: " + url + "\nStatus: " + statusCode + " Not Found");
-                }
-            } else {
-                System.out.println("URL: " + url + "\nStatus: Network Error");
+            // Print the URL before making the connection
+            if (isOriginalUrl) {
+                System.out.println("URL: " + url);
             }
 
-            out.close();
-            in.close();
-            socket.close();
-        } catch (IOException | NumberFormatException e) {
-            System.out.println("URL: " + url + "\nStatus: Network Error");
-        }
-    }
-
-    private static String getRedirectedURL(BufferedReader in) throws IOException {
-        String line;
-        while ((line = in.readLine()) != null) {
-            if (line.startsWith("Location:")) {
-                return line.substring("Location:".length()).trim();
-            }
-        }
-        return null;
-    }
-
-    private static void fetchAndPrintImageStatus(String originalURL, String imageUrl) {
-        try {
-            URL u = new URL(originalURL);
-            String host = u.getHost();
-            if (!imageUrl.startsWith("http")) {
-                imageUrl = "http://" + host + imageUrl;
-            }
-            HttpURLConnection connection = (HttpURLConnection) new URL(imageUrl).openConnection();
+            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
             connection.setRequestMethod("GET");
+            connection.setInstanceFollowRedirects(false);
+
             int statusCode = connection.getResponseCode();
-            System.out.println("Referenced URL: " + imageUrl);
-            if (statusCode >= 200 && statusCode < 300) {
-                System.out.println("Status: " + statusCode + " OK");
-            } else {
-                System.out.println("Status: " + statusCode + " Not Found");
+            System.out.println("Status: " + statusCode + " " + connection.getResponseMessage());
+
+            if (statusCode == HttpURLConnection.HTTP_MOVED_TEMP || statusCode == HttpURLConnection.HTTP_MOVED_PERM || statusCode == HttpURLConnection.HTTP_SEE_OTHER) {
+                String newUrl = connection.getHeaderField("Location");
+                System.out.println("Redirected URL: " + newUrl);
+                processURL(newUrl, redirectCount + 1, false);
+            } else if (statusCode == HttpURLConnection.HTTP_OK && isOriginalUrl) {
+                if (url.endsWith("page.html") || url.endsWith("temp/page.html")) {
+                    extractAndPrintReferencedURLs(connection, url);
+                }
             }
         } catch (IOException e) {
-            System.out.println("Referenced URL: " + imageUrl);
+            // Print the URL again only if it's not already printed
+            if (!isOriginalUrl) {
+                System.out.println("URL: " + url);
+            }
             System.out.println("Status: Network Error");
         }
+        System.out.println();
+    }
+
+
+    private void extractAndPrintReferencedURLs(HttpURLConnection connection, String baseUrl) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+        String inputLine;
+        StringBuilder content = new StringBuilder();
+
+        while ((inputLine = in.readLine()) != null) {
+            content.append(inputLine);
+        }
+        in.close();
+
+        Pattern pattern = Pattern.compile("<img[^>]+src\\s*=\\s*['\"]([^'\"]+)['\"][^>]*>", Pattern.CASE_INSENSITIVE);
+        Matcher matcher = pattern.matcher(content);
+
+        while (matcher.find()) {
+            String imgSrc = matcher.group(1);
+            String resolvedUrl = resolveUrl(baseUrl, imgSrc);
+            checkReferencedUrl(resolvedUrl);
+        }
+    }
+
+    private String resolveUrl(String baseUrl, String imgSrc) throws MalformedURLException {
+        URL base = new URL(baseUrl);
+        URL resolved = new URL(base, imgSrc); // Resolve the image URL against the base URL
+        return resolved.toString();
+    }
+
+    private void checkReferencedUrl(String urlString) {
+        try {
+            HttpURLConnection connection = (HttpURLConnection) new URL(urlString).openConnection();
+            connection.setRequestMethod("GET");
+            int status = connection.getResponseCode();
+            System.out.println("Referenced URL: " + urlString);
+            System.out.println("Status: " + status + " " + connection.getResponseMessage());
+        } catch (IOException e) {
+            System.out.println("Referenced URL: " + urlString);
+            System.out.println("Status: Network Error");
+        }
+        System.out.println();
     }
 }
-
