@@ -50,7 +50,6 @@ public class Monitor {
         }
 
         try {
-            // Print the URL before making the connection
             if (isOriginalUrl) {
                 System.out.println("URL: " + url);
             }
@@ -72,7 +71,6 @@ public class Monitor {
                 }
             }
         } catch (IOException e) {
-            // Print the URL again only if it's not already printed
             if (!isOriginalUrl) {
                 System.out.println("URL: " + url);
             }
@@ -104,7 +102,7 @@ public class Monitor {
 
     private String resolveUrl(String baseUrl, String imgSrc) throws MalformedURLException {
         URL base = new URL(baseUrl);
-        URL resolved = new URL(base, imgSrc); // Resolve the image URL against the base URL
+        URL resolved = new URL(base, imgSrc); 
         return resolved.toString();
     }
 
